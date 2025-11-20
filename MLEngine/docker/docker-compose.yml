@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: docker-postgres-1
+    environment:
+      POSTGRES_DB: ${PGDATABASE}
+      POSTGRES_USER: ${PGUSER}
+      POSTGRES_PASSWORD: ${PGPASSWORD}
+    ports:
+      - "${PGPORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER} -d ${PGDATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  scraper:
+    build:
+      context: ..            # <--- MUDANÇA IMPORTANTE: Sobe um nível para ver a pasta 'src'
+      dockerfile: docker/Dockerfile  # O caminho para o Dockerfile a partir da raiz
+    container_name: docker-scraper-1
+    env_file:
+      - .env
+    environment:
+      PGDATABASE: ${PGDATABASE}
+      PGUSER: ${PGUSER}
+      PGPASSWORD: ${PGPASSWORD}
+      PGHOST: ${PGHOST}
+      PGPORT: ${PGPORT}
+      START_URLS_LIST: ${START_URLS_LIST}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

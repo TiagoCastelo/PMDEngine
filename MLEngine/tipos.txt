@@ -1,0 +1,13 @@
+    tipo     
+-------------
+ apartamento
+ arrecadacao
+ duplex
+ garagem
+ moradia
+ outros
+ predio
+ quinta
+ terreno
+(9 rows)
+

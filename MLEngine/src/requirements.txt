@@ -1,0 +1,5 @@
+brotli
+scrapy
+psycopg2-binary
+scrapy-user-agents
+joblib
