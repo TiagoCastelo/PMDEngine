@@ -17,15 +17,6 @@ class RemaxSpider(scrapy.Spider):
     allowed_domains = ["remax.pt"]
     start_urls = SETTINGS.getlist('URLS_LIST')
 
-    # --- CONFIGURAÇÕES DE RESILIÊNCIA E ACELERAÇÃO ---
-    custom_settings = {
-        'PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT': 60000, # 60 segundos
-        'DOWNLOAD_TIMEOUT': 60,
-        'RETRY_ENABLED': True,
-        'RETRY_TIMES': 3, 
-        'CONCURRENT_REQUESTS': 3,
-        'DOWNLOAD_DELAY': 2.5,
-    }
 
     # --- VARIÁVEIS DE CONTROLO E CACHE ---
     existing_listings = {} 

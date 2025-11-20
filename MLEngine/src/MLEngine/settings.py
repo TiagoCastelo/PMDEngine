@@ -44,6 +44,11 @@ DOWNLOAD_DELAY = 2.5            # 2.5s entre requests
 CONCURRENT_REQUESTS = 3          # Até 3 requests simultâneas
 COOKIES_ENABLED = False 
 
+# NOVAS CONFIGURAÇÕES DE RESILIÊNCIA E TIMEOUT (Adicionadas/Atualizadas)
+DOWNLOAD_TIMEOUT = 60           # 60 segundos de timeout para o download
+RETRY_ENABLED = True            # Ativa a retentativa de requests falhadas
+RETRY_TIMES = 3                 # Número máximo de retentativas
+
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
 
 DEFAULT_REQUEST_HEADERS = {
@@ -77,7 +82,7 @@ DOWNLOADER_MIDDLEWARES = {
 
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 PLAYWRIGHT_BROWSER_TYPE = "chromium"
-PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 15000  # Timeout reduzido para 15s
+PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 60000  # Timeout reduzido para 15s
 
 ITEM_PIPELINES = {
     'MLEngine.pipelines.PostgresPipeline': 300,
