@@ -1,0 +1,54 @@
+# -------------------------------------------------------------------------
+# Python
+# -------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Arquivos de log e cache
+*.log
+.coverage
+.tox/
+.mypy_cache/
+.pytest_cache/
+.vscode/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+/venv
+/env
+
+# -------------------------------------------------------------------------
+# Scrapy/Project Specific
+# ---------------------------------------------------------
+# Configuração de ambiente secreta
+MLEngine/docker/.env
+.env
+local_settings.py
+
+# Ficheiros criados pelo Scrapy ou temporários
+*.json
+*.csv
+*.jl
+*.sqlite
+*.db
+
+# -------------------------------------------------------------------------
+# Machine Learning / Data
+# ---------------------------------------------------------
+# Resultados de treino (logs e checkpoints)
+/ML_Training/*.log
+/ML_Training/temp/
+*.cpython-*.pyc
+
+# Arquivos de dados brutos ou processados (se forem muito grandes ou sensíveis)
+/MLEngine/data/
+/MLEngine/*.txt
+MLEngine/anuncios_area_invalida.txt
+MLEngine/anuncios_filtrados.txt
+MLEngine/data.txt
+MLEngine/snapshot.txt
+MLEngine/tipos.txt
