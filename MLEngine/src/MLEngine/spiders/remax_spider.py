@@ -17,6 +17,15 @@ class RemaxSpider(scrapy.Spider):
     allowed_domains = ["remax.pt"]
     start_urls = SETTINGS.getlist('URLS_LIST')
 
+    # --- CONFIGURAÇÕES DE RESILIÊNCIA E ACELERAÇÃO ---
+    custom_settings = {
+        'PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT': 60000, # 60 segundos
+        'DOWNLOAD_TIMEOUT': 60,
+        'RETRY_ENABLED': True,
+        'RETRY_TIMES': 3, 
+        'CONCURRENT_REQUESTS': 3,
+        'DOWNLOAD_DELAY': 2.5,
+    }
 
     # --- VARIÁVEIS DE CONTROLO E CACHE ---
     existing_listings = {} 
@@ -104,11 +113,12 @@ class RemaxSpider(scrapy.Spider):
             yield self.make_listing_request(url, page_number=1)
 
     def make_listing_request(self, url, page_number):
-        """Cria o pedido com 'rede de segurança' (errback)."""
+        """Cria o pedido com 'rede de segurança' (errback) e Prioridade Alta (100)."""
         return scrapy.Request(
             url=url,
             callback=self.parse,
             errback=self.errback_pagination, # Se falhar, chama isto
+            priority=100, # ALTA PRIORIDADE: Processar todas as páginas de listagem primeiro
             meta={
                 "playwright": True,
                 "playwright_context_kwargs": {
@@ -138,6 +148,7 @@ class RemaxSpider(scrapy.Spider):
         new_query = urlencode(qs, doseq=True)
         next_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
         
+        # A requisição de recuperação também usa make_listing_request (priority=100)
         yield self.make_listing_request(next_url, next_page)
 
     # ------------------------------
@@ -202,6 +213,7 @@ class RemaxSpider(scrapy.Spider):
             yield response.follow(
                 full_link,
                 callback=self.parse_remax_imovel,
+                priority=10, # PRIORIDADE BAIXA: Processar depois de toda a paginação
                 cb_kwargs={
                     'area': area_val, 'price': price_val, 
                     'freguesia': freguesia_val, 'link_completo': full_link,
@@ -215,6 +227,7 @@ class RemaxSpider(scrapy.Spider):
             next_page = page_num + 1
             next_url = self.get_next_page_url(response.url)
             self.logger.info(f"➡️ A avançar para página {next_page}...")
+            # A chamada a make_listing_request já tem a prioridade alta (100)
             yield self.make_listing_request(next_url, next_page)
         else:
             self.logger.info("🏁 Última página atingida.")
