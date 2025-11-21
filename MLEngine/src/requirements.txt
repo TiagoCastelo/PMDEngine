@@ -3,3 +3,5 @@ scrapy
 psycopg2-binary
 scrapy-user-agents
 joblib
+ollama
+pydantic

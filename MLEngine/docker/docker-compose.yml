@@ -15,6 +15,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  # --- NOVO SERVIÇO: CÉREBRO AI ---
+  ollama:
+    image: ollama/ollama:latest
+    container_name: pmd_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+    # Se tiveres GPU NVIDIA, descomenta:
+    deploy:
+       resources:
+         reservations:
+           devices:
+             - driver: nvidia
+               count: 1
+               capabilities: [gpu]
 
   scraper:
     build:
@@ -30,9 +46,13 @@ services:
       PGHOST: ${PGHOST}
       PGPORT: ${PGPORT}
       START_URLS_LIST: ${START_URLS_LIST}
+      OLLAMA_HOST: "http://ollama:11434"
     depends_on:
       postgres:
         condition: service_healthy
+      ollama:
+        condition: service_started
 
 volumes:
   postgres_data:
+  ollama_storage: # <--- Novo volume para persistir os modelos

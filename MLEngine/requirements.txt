@@ -2,3 +2,5 @@ scikit-learn
 fastapi
 uvicorn
 tabulate
+ollama
+pydantic

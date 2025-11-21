@@ -4,184 +4,169 @@ import pandas as pd
 import joblib
 import numpy as np
 
-# --- CONFIGURAÇÃO DE CAMINHOS ---
+# =========================================================================
+# SETUP E CAMINHOS
+# =========================================================================
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.abspath(os.path.join(current_dir, '..'))
 sys.path.append(root_dir)
 
-MODEL_DIR = os.path.join(current_dir, 'models')
-
+# Importar o processador centralizado
 from common.processing import get_data_from_db, feature_engineering
 
-# =========================================================================
-# 1. MAPA DE MODELOS (A Ponte entre Dados e IA)
-# =========================================================================
+MODEL_DIR = os.path.join(current_dir, 'models')
+
+# Mapa para saber que modelo usar para cada tipo de imóvel
 MODELO_MAPPING = {
     'apartamento': 'habitacional',
     'moradia': 'habitacional',
     'duplex': 'habitacional',
     'predio': 'habitacional',
+    'quinta': 'habitacional',
     'terreno': 'terreno',
-    'quinta': 'terreno',
+    'lote': 'terreno',
     'garagem': 'garagem',
     'arrecadacao': 'garagem'
 }
 
-# =========================================================================
-# 2. CARREGAR E PROCESSAR DADOS
-# =========================================================================
-print("🚀 A carregar dados da base de dados...")
-df_raw = get_data_from_db()
+def main():
+    # 1. CARREGAR DADOS
+    print("🚀 A carregar dados da Base de Dados (SQL)...")
+    df_raw = get_data_from_db()
+    
+    if df_raw.empty:
+        print("❌ Sem dados. Verifica se o scraper e o enrich_data.py já correram.")
+        return
 
-if df_raw.empty:
-    print("❌ Sem dados para analisar.")
-    sys.exit(1)
+    # 2. PROCESSAMENTO (Calcula Areas Relevantes e Scores IA)
+    print("⚙️ A processar features e inteligência artificial...")
+    df_features = feature_engineering(df_raw.copy())
 
-df_features = feature_engineering(df_raw.copy())
+    # =========================================================================
+    # 3. FILTRO INTERATIVO (FREGUESIAS)
+    # =========================================================================
+    print("\n📍 FILTRO GEOGRÁFICO")
+    lista_freguesias = sorted(df_features['freguesia'].dropna().unique().tolist())
+    
+    print(f"   0 - Todas as {len(lista_freguesias)} freguesias")
+    # Listar apenas as top 10 mais frequentes para não encher o ecrã
+    top_freguesias = df_features['freguesia'].value_counts().head(10).index.tolist()
+    for i, f in enumerate(top_freguesias, 1):
+        print(f"   {i} - {f}")
+    
+    escolha = input("\n➡️ Escolha (ENTER para todas, ou digite parte do nome): ").strip().lower()
 
-# Colunas apenas para relatório
-cols_info = ['link', 'freguesia', 'preco_atual', 'area_bruta_m2', 'area_terreno_m2', 'listing_type']
-
-# =========================================================================
-# 2.1 — FILTRO DE FREGUESIA (INTERAÇÃO)
-# =========================================================================
-print("\n📍 Filtro opcional por freguesia")
-
-lista_freguesias = sorted(df_features['freguesia'].dropna().unique().tolist())
-
-print("\nFreguesias encontradas:")
-print("0 - todas")
-for i, f in enumerate(lista_freguesias, start=1):
-    print(f"{i} - {f}")
-
-escolha = input("\n➡️  Escolha o número da freguesia (ENTER = todas): ").strip()
-
-if escolha == "" or escolha == "0":
-    freguesia_escolhida = "todas"
-    print("\n🔎 A analisar TODAS as freguesias...\n")
-else:
-    try:
-        escolha_num = int(escolha)
-        if escolha_num < 1 or escolha_num > len(lista_freguesias):
-            raise ValueError
-        freguesia_escolhida = lista_freguesias[escolha_num - 1]
-        print(f"\n🔎 A analisar apenas a freguesia: **{freguesia_escolhida}**\n")
-    except:
-        print("\n⚠️ Opção inválida. A analisar TODAS as freguesias...\n")
-        freguesia_escolhida = "todas"
-
-if freguesia_escolhida != "todas":
-    df_features = df_features[df_features['freguesia'] == freguesia_escolhida]
-    df_raw = df_raw[df_raw['freguesia'] == freguesia_escolhida]
+    if escolha and not escolha.isdigit():
+        # Filtro por texto (ex: "benfica")
+        df_features = df_features[df_features['freguesia_limpa'].str.contains(escolha)]
+        print(f"🔍 Filtrado por nome: {len(df_features)} imóveis encontrados.")
+    elif escolha.isdigit() and int(escolha) > 0 and int(escolha) <= len(top_freguesias):
+        # Filtro por número
+        freguesia_nome = top_freguesias[int(escolha)-1]
+        df_features = df_features[df_features['freguesia'] == freguesia_nome]
+        print(f"🔍 Filtrado por: {freguesia_nome}")
+    else:
+        print("🌍 Analisando TODO o mercado.")
 
     if df_features.empty:
-        print("❌ Não há imóveis nessa freguesia.")
-        sys.exit(1)
+        print("❌ Nenhum imóvel encontrado com esse filtro.")
+        return
 
-# =========================================================================
-# 3. AVALIAÇÃO INTELIGENTE
-# =========================================================================
-dfs_avaliados = []
-modelos_carregados = {}
-
-print(f"\n🧠 A iniciar avaliação de mercado...")
-
-df_features['modelo_necessario'] = df_features['listing_type'].map(MODELO_MAPPING).fillna('outros')
-
-for modelo_nome, df_grupo in df_features.groupby('modelo_necessario'):
+    # =========================================================================
+    # 4. AVALIAÇÃO DE MERCADO (PREDIÇÃO)
+    # =========================================================================
+    print(f"\n🧠 A avaliar {len(df_features)} imóveis com modelos ML...")
     
-    if modelo_nome == 'outros':
-        continue
+    dfs_avaliados = []
+    df_features['modelo_necessario'] = df_features['listing_type'].map(MODELO_MAPPING).fillna('outros')
 
-    if modelo_nome not in modelos_carregados:
+    for modelo_nome, df_grupo in df_features.groupby('modelo_necessario'):
+        if modelo_nome == 'outros': continue
+
+        # Carregar o Cérebro Especialista
         path_model = os.path.join(MODEL_DIR, f"modelo_{modelo_nome}.pkl")
         path_cols = os.path.join(MODEL_DIR, f"columns_{modelo_nome}.pkl")
         
-        if os.path.exists(path_model):
-            try:
-                modelos_carregados[modelo_nome] = {
-                    'model': joblib.load(path_model),
-                    'cols': joblib.load(path_cols)
-                }
-            except Exception as e:
-                print(f"❌ Erro ao carregar modelo {modelo_nome}: {e}")
-                continue
-        else:
-            print(f"⚠️ Modelo '{modelo_nome}' não existe (provavelmente poucos dados suficientes).")
+        if not os.path.exists(path_model):
+            print(f"⚠️ Modelo '{modelo_nome}' não encontrado. (Corre o treino_modelo.py primeiro)")
             continue
 
-    artefactos = modelos_carregados[modelo_nome]
-    model = artefactos['model']
-    train_cols = artefactos['cols']
-    
-    X = df_grupo.drop(
-        columns=cols_info + [
-            'preco_m2', 'target_habitacional', 'target_terreno', 'target_box',
-            'url_id', 'last_crawled', 'data_publicacao', 'descricao_bruta'
-        ],
-        errors='ignore'
+        try:
+            model = joblib.load(path_model)
+            train_cols = joblib.load(path_cols)
+        except Exception as e:
+            print(f"❌ Erro modelo {modelo_nome}: {e}")
+            continue
+
+        # Preparar dados para o modelo (Garante as mesmas colunas do treino)
+        X = df_grupo.reindex(columns=train_cols, fill_value=0)
+        
+        # PREDIÇÃO: O modelo devolve o Preço Justo por m²
+        pred_preco_m2 = model.predict(X)
+        
+        # CÁLCULO DO VALOR FINAL
+        # Valor = Preço m2 Estimado * Área Relevante (Lote para terrenos, Privativa para apts)
+        df_grupo = df_grupo.copy()
+        df_grupo['valor_justo'] = pred_preco_m2 * df_grupo['area_relevante_m2']
+        
+        dfs_avaliados.append(df_grupo)
+
+    if not dfs_avaliados:
+        return
+
+    df_final = pd.concat(dfs_avaliados)
+
+    # =========================================================================
+    # 5. RELATÓRIO DE OPORTUNIDADES
+    # =========================================================================
+    # Lucro Potencial = (Valor Justo - Preço Atual)
+    df_final['lucro_potencial'] = df_final['valor_justo'] - df_final['preco_atual']
+    df_final['margem_perc'] = (df_final['lucro_potencial'] / df_final['preco_atual']) * 100
+
+    # CRITÉRIOS DE OURO PARA FILTRAGEM
+    filtro_oportunidade = (
+        (df_final['preco_atual'] > 10000) &          # Ignorar lixo/erros
+        (
+            (df_final['margem_perc'] > 20) |         # Margem financeira alta
+            (df_final['flag_urgente'] == 1)          # OU Urgência detetada pela IA
+        )
     )
 
-    X_final = X.reindex(columns=train_cols, fill_value=0).fillna(0)
-    
-    pred_target = model.predict(X_final)
-    
-    df_grupo = df_grupo.copy()
-    df_grupo['valor_target_previsto'] = pred_target
-    
-    if modelo_nome == 'habitacional':
-        df_grupo['valor_justo'] = pred_target * df_grupo['area_bruta_m2']
-    elif modelo_nome == 'terreno':
-        area_calc = np.where(df_grupo['area_terreno_m2'] > 10,
-                             df_grupo['area_terreno_m2'],
-                             df_grupo['area_bruta_m2'])
-        df_grupo['valor_justo'] = pred_target * area_calc
-    elif modelo_nome == 'garagem':
-        area_calc = np.where(df_grupo['area_util_m2'] > 5,
-                             df_grupo['area_util_m2'],
-                             df_grupo['area_bruta_m2'])
-        df_grupo['valor_justo'] = pred_target * area_calc
+    oportunidades = df_final[filtro_oportunidade].sort_values(by='margem_perc', ascending=False).head(30)
+
+    print("\n" + "="*80)
+    print(f"🏆 TOP 30 OPORTUNIDADES DE NEGÓCIO (IA + ML)")
+    print("="*80)
+
+    if oportunidades.empty:
+        print("Nenhuma oportunidade clara encontrada hoje. Tente mudar os filtros.")
+    else:
+        # Preparar tabela bonita
+        display = oportunidades.copy()
         
-    dfs_avaliados.append(df_grupo)
-    print(f"✅ Avaliados {len(df_grupo)} imóveis com modelo '{modelo_nome}'.")
+        # Formatar colunas
+        display['Preço'] = display['preco_atual'].apply(lambda x: f"{x:,.0f}€")
+        display['Justo'] = display['valor_justo'].apply(lambda x: f"{x:,.0f}€")
+        display['Margem'] = display['margem_perc'].apply(lambda x: f"{x:+.0f}%")
+        display['Area'] = display['area_relevante_m2'].apply(lambda x: f"{x:.0f}m2")
+        
+        # Coluna IA: Combina Estado e Urgência num ícone
+        def formata_ia(row):
+            icon_est = "🏚️" if row['score_estado'] <= 2 else ("💎" if row['score_estado'] >= 5 else "🏠")
+            icon_urg = "🔥URG" if row['flag_urgente'] else ""
+            return f"{icon_est} {icon_urg}"
+        
+        display['IA'] = display.apply(formata_ia, axis=1)
 
-# =========================================================================
-# 4. RELATÓRIO DE OPORTUNIDADES
-# =========================================================================
-if not dfs_avaliados:
-    print("❌ Nenhum imóvel pôde ser avaliado.")
-    sys.exit()
+        # Selecionar colunas finais
+        cols_finais = ['listing_type', 'freguesia', 'Area', 'Preço', 'Justo', 'Margem', 'IA', 'link']
+        
+        print(display[cols_finais].to_markdown(index=False))
+        
+        # Guardar Excel/CSV para análise
+        f_name = 'oportunidades_do_dia.csv'
+        display[cols_finais].to_csv(f_name, index=False)
+        print(f"\n💾 Relatório guardado em: {f_name}")
 
-df_final = pd.concat(dfs_avaliados)
-
-df_final['diferenca'] = df_final['valor_justo'] - df_final['preco_atual']
-df_final['lucro_potencial_perc'] = (df_final['diferenca'] / df_final['valor_justo']) * 100
-
-filtro_oportunidade = (
-    df_final['lucro_potencial_perc'] > 20
-) & (
-    df_final['lucro_potencial_perc'] < 80
-)
-
-oportunidades = df_final[filtro_oportunidade].sort_values(by='lucro_potencial_perc', ascending=False)
-
-pd.options.display.float_format = '{:,.0f} €'.format
-
-print("\n=================================================================================")
-print(f"🏆 TOP 20 OPORTUNIDADES REAIS (Lucro Estimado > 20%)")
-print("=================================================================================\n")
-
-if oportunidades.empty:
-    print("Nenhuma oportunidade encontrada com estes critérios.")
-else:
-    cols_show = [
-        'listing_type', 'freguesia', 'area_bruta_m2', 'preco_atual',
-        'valor_justo', 'diferenca', 'lucro_potencial_perc', 'link'
-    ]
-    
-    display = oportunidades[cols_show].head(20).copy()
-    display['lucro_potencial_perc'] = display['lucro_potencial_perc'].apply(lambda x: f"{x:.1f}%")
-    
-    print(display.to_markdown(index=False))
-
-print(f"\nℹ️ Total analisado: {len(df_final)} | Oportunidades: {len(oportunidades)}")
+if __name__ == "__main__":
+    main()
